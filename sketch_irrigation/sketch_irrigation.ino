@@ -5,29 +5,26 @@
 // Bomba de agua
 int WATER_PUMP_D = 13;
 
-// Corriente Display LCD
-int LCD_POS_PIN = 12;
-int LCD_NEG_PIN = 11;
-
 //Sensor de suelo
-//int SOIL_SENSOR_POS_PIN = 8;
-//int SOIL_SENSOR_NEG_PIN = A3;
 int SOIL_SENSOR_D = 5;
 int SOIL_SENSOR_A = A3;
 
 // Sensor de temperatura
-int TEMP_SENSOR_POS_PIN = 2;
-int TEMP_SENSOR_NEG_PIN = 4;
 int TEMP_SENSOR_D = 3;
 
-// Sensor de agua
-int WATER_SENSOR_POS_PIN = 9;
-int WATER_SENSOR_NEG_PIN = 10;
-int WATER_SENSOR_A = A2;
+// Sensor de agua (Ultrasonico)
+int WATER_SENSOR_ECHO_PIN = 9;
+int WATER_SENSOR_TRIG_PIN = 8;
 
-// Variables de tiempo
+
+// Profundidad de recipiente de agua en centimetros
+int WATER_RECIP_H = 9;
+
+// Constante de delay de loop
 int STEP_MS = 500;
-int ac_ms = 0;
+
+// Acumulador de loop
+int ac_ms_G = 0;
 
 // Definimos el pin digital donde se conecta el sensor DHT11
 #define DHTPIN TEMP_SENSOR_D
@@ -46,27 +43,10 @@ void setup() {
   
   // Pin de activación de bomba de agua
   pinMode(WATER_PUMP_D,OUTPUT);
-  
-  // Pin positivo de display LCD
-  pinMode(LCD_POS_PIN,OUTPUT);
-  digitalWrite(LCD_POS_PIN, HIGH);
-  // Pin negativo de display LCD
-  pinMode(LCD_NEG_PIN,OUTPUT);
-  digitalWrite(LCD_NEG_PIN, LOW);
-  
-  // Pin positivo de sensor de temperatura
-  pinMode(TEMP_SENSOR_POS_PIN,OUTPUT);
-  digitalWrite(TEMP_SENSOR_POS_PIN, HIGH);
-  // Pin negativo de sensor de temperatura
-  pinMode(TEMP_SENSOR_NEG_PIN,OUTPUT);
-  digitalWrite(TEMP_SENSOR_NEG_PIN, LOW);
-  
-  // Pin positivo de sensor de agua
-  pinMode(WATER_SENSOR_POS_PIN,OUTPUT);
-  digitalWrite(WATER_SENSOR_POS_PIN, HIGH);
-  // Pin negativo de sensor de temperatura
-  pinMode(WATER_SENSOR_NEG_PIN,OUTPUT);
-  digitalWrite(WATER_SENSOR_NEG_PIN, LOW);
+
+  // Inicializo pines de ultrasonido
+  pinMode(WATER_SENSOR_TRIG_PIN, OUTPUT);
+  pinMode(WATER_SENSOR_ECHO_PIN, INPUT);
 
   // Inicializamos comunicación serie
   Serial.begin(9600);
@@ -88,13 +68,13 @@ void setup() {
 void loop() {
   prenderBomba();
   delay(STEP_MS);
-  ac_ms += STEP_MS;
-  if (ac_ms % 15000 == 0) {
+  ac_ms_G += STEP_MS;
+  if (ac_ms_G % 15000 == 0) {
     displayAgua();
-    ac_ms = 0;
-  } else if (ac_ms % 10000 == 0) {
+    ac_ms_G = 0;
+  } else if (ac_ms_G % 10000 == 0) {
     displaySuelo();
-  } else if (ac_ms % 5000 == 0) {
+  } else if (ac_ms_G % 5000 == 0) {
     displayAmbiente();
   }
 }
@@ -102,40 +82,60 @@ void loop() {
 void prenderBomba() {
   // Leemos humedad del suelo
   int soil_humidity_val = digitalRead(SOIL_SENSOR_D);
-  if (soil_humidity_val == LOW) {
+  if (soil_humidity_val == LOW || calcularNivelAgua() <= 30) {
     // Bomba apagada
     digitalWrite(WATER_PUMP_D, LOW);
   } else {
+    // Prendo la bomba solo si hay al menos si el nivel de agua es 30%
     // Bomba prendida
     digitalWrite(WATER_PUMP_D, HIGH);
   }
 }
 
-void displayAgua() {
-  // Leemos nivel del agua
-  int w_s = analogRead(WATER_SENSOR_A);
-  String water_level;
+double calcularNivelAgua() {
+    // Limpio el pin del trigger
+  digitalWrite(WATER_SENSOR_TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  // Seteo el pin de trigger en HIGH por 10 us
+  digitalWrite(WATER_SENSOR_TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(WATER_SENSOR_TRIG_PIN, LOW);
+  // Leo el pin de echo, retorna la la duracion del trayecto de la onda de sonido en ms
+  long duration = pulseIn(WATER_SENSOR_ECHO_PIN, HIGH);
+  
+  // Calculamos la distancia
+  double distance = duration*0.034/2;
+  Serial.print("Distance: ");
+  Serial.println(distance);
+  
+  return ((WATER_RECIP_H - distance) / (double) WATER_RECIP_H) * 100;
+}
 
-  if (w_s >= 400) {
-    water_level = "Alto";
-  } else if (w_s >= 100) {
-    water_level = "Medio";
+
+void displayAgua() {
+  int water_level = (int) calcularNivelAgua();
+  String water_level_txt;
+  if (water_level < 25) {
+    water_level_txt = "Bajo";
+  } else if (water_level < 75) {
+    water_level_txt = "Medio";
   } else {
-    water_level = "Bajo";
+    water_level_txt = "Alto";
   }
 
+  // Prints the distance on the Serial Monitor
   Serial.print("Water: ");
-  Serial.print(w_s);
-  Serial.print("\n");
+  Serial.println(water_level);
 
   lcd.clear();
   lcd.home();
   lcd.print("Nivel Agua ");
-  lcd.print(water_level);
+  lcd.print(water_level_txt);
 
   lcd.setCursor(0, 1);
   lcd.print("Indice: ");
-  lcd.print(w_s);
+  lcd.print(water_level);
+  lcd.print("%");
 }
 
 void displaySuelo() {
@@ -144,9 +144,8 @@ void displaySuelo() {
   int soil_humidity_val = digitalRead(SOIL_SENSOR_D);
 
   Serial.print("Soil: ");
-  Serial.print(h_s);
-  Serial.print("\n");
-
+  Serial.println(h_s);
+  
   lcd.clear();
   lcd.home();
   lcd.print("Suelo ");
@@ -180,7 +179,7 @@ void displayAmbiente() {
   Serial.print("^C\t");
   Serial.print("Heat Index: ");
   Serial.print(hic);
-  Serial.print("^C\n");
+  Serial.println("^C");
 
   lcd.clear();
   lcd.home();
