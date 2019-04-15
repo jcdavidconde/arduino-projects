@@ -18,7 +18,7 @@ int WATER_SENSOR_TRIG_PIN = 8;
 
 
 // Profundidad de recipiente de agua en centimetros
-int WATER_RECIP_H = 9;
+int WATER_RECIP_H = 14;
 
 // Constante de delay de loop
 int STEP_MS = 500;
