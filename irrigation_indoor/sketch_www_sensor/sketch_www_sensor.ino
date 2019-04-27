@@ -1,6 +1,9 @@
 #include <SoftwareSerial.h>
 #include <DHT.h>
 
+const String _SSID = "la_cueva_de_ugarte";
+const String _PWD = "fr4nqu1t0";
+
 // Sensor de suelo
 const int SOIL_SENSOR_A = A0;
 // Sensor de temperatura
@@ -24,7 +27,7 @@ DHT dht(DHTPIN, DHTTYPE);
 SoftwareSerial wifiSerial(RX_PIN, TX_PIN);      // RX, TX for ESP8266
 
 bool DEBUG = true;   //show more logs
-int responseTime = 1000; //communication timeout
+const int TIMEOUT = 3000; //communication timeout
 
 void setup()
 {
@@ -40,15 +43,17 @@ void setup()
   while (!wifiSerial) {
     ; // wait for serial port to connect. Needed for Leonardo only
   }
-  sendToWifi("AT",responseTime,DEBUG);
+  sendToWifi("AT",TIMEOUT,DEBUG);
   delay(100);
-  sendToWifi("AT+RST",responseTime,DEBUG);
+  sendToWifi("AT+RST",TIMEOUT,DEBUG);
   delay(5000);
-  sendToWifi("AT+CIPMUX=0",responseTime,DEBUG);
+  sendToWifi("AT+CIPMUX=1",TIMEOUT,DEBUG);
   delay(100);
-  sendToWifi("AT+CWMODE=1",responseTime,DEBUG);
+  sendToWifi("AT+CWMODE=1",TIMEOUT,DEBUG);
   delay(100);
-  sendToWifi("AT+CWJAP=\"la_cueva_de_ugarte\",\"fr4nqu1t0\"",5000,DEBUG);
+  sendToWifi("AT+CIPMODE=0",TIMEOUT,DEBUG);
+  delay(100);
+  sendToWifi("AT+CWJAP=\""+_SSID+"\",\""+_PWD+"\"",5000,DEBUG);
   delay(100);
   Serial.println("Wifi connection is running!");  
 }
@@ -57,6 +62,7 @@ float h_amb = 0;
 float t_amb = 0;
 int ac_time = 0;
 const int step_time = 1000;
+int connection = 0;
 
 void loop()
 {
@@ -87,21 +93,24 @@ void loop()
     Serial.print("LA:");
     Serial.println(l_amb);
 
-    String data = "device_id="+String(DEVICE_ID);
+    String data = "?device_id="+String(DEVICE_ID);
     data += "&humidity="+String(h_amb);
     data += "&temperature="+String(t_amb);
     data += "&soil_humidity="+String(h_soil);
     data += "&light_intensity="+String(l_amb);
     
-    sendToWifi("AT+CIPSTART=\"TCP\",\"jcdavidconde.com\",80",responseTime,DEBUG);
+    sendToWifi("AT+CIPSTART="+String(connection)+",\"TCP\",\"www.jcdavidconde.com\",80",TIMEOUT,DEBUG);
     delay(100);
-    String request = "POST http://jcdavidconde.com/jcdavidconde.com/sensor.php";
-    request += " HTTP/1.1\r\n";
-    request += "Accept: text/html,application/xhtml+xml,application/xml\r\n";
-    request += "Content-Length: "+String(data.length())+"\r\n\r\n";
+    String request = "GET /jcdavidconde.com/sensor.php";
     request += data;
-    
+    request += " HTTP/1.1\r\n";
+    request += "Accept: */*\r\n";
+    request += "User-Agent: ArduinoUno/ESP8266\r\n";
+    request += "Host: www.jcdavidconde.com\r\n";
+    request += "Connection: close\r\n\r\n";
+
     sendData(request);
+    connection = (connection + 1) % 4;
   }
    
   delay(step_time);
@@ -117,13 +126,12 @@ void loop()
 */
 void sendData(String str){
   String len="";
-  len+=str.length();
-  sendToWifi("AT+CIPSEND="+len,responseTime,DEBUG);
+  len+=str.length()+2;
+  sendToWifi("AT+CIPSEND="+String(connection)+","+len,TIMEOUT,DEBUG);
   delay(100);
   Serial.println(str);
-  sendToWifi(str,responseTime,DEBUG);
-  delay(100);
-  sendToWifi("AT+CIPCLOSE",responseTime,DEBUG);
+  sendToWifi(str,TIMEOUT,DEBUG);
+  sendToWifi("AT+CIPCLOSE="+String(connection),TIMEOUT,DEBUG);
 }
 
 
@@ -178,6 +186,9 @@ String sendToWifi(String command, const int timeout, boolean debug){
   }
   if(debug)
   {
+    if (response == "") {
+      response = "WiFi timeout exceded";
+    }
     Serial.println(response);
   }
   return response;
