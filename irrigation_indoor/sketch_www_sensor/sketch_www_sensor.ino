@@ -6,6 +6,7 @@ const String WIFI_PWD = "fr4nqu1t0";
 const bool DEBUG = true;   //show more logs
 const int TIMEOUT = 3000; //communication timeout
 const int WIFI_ERRORS_THRESHOLD = 10; //Wifi errors max before reboot
+const int DATA_SENDING_INTERVAL = 230000; // Intervalo para enviar datos al servidor
 const int STEP_TIME = 5000; //Loop delay
 const int DEVICE_ID = 12; // Identificador de dispositivo para reporte de datos
 
@@ -82,7 +83,7 @@ void loop() {
   // Leemos la itensidad de luz
   int l_amb = analogRead(LIGHT_SENSOR_A);
 
-  if (ac_time % 30000 == 0) { //Envio datos cada 
+  if (ac_time % DATA_SENDING_INTERVAL == 0) { //Envio datos cada 
     // Si se supera la cantidad de errores en conexion Wifi ejecuto rutina de re-boot
     if (wifi_errors > WIFI_ERRORS_THRESHOLD) {
       initWifi();
@@ -180,8 +181,10 @@ String sendToWifi(String command, const int timeout, const bool debug) {
   }
   if(debug) {
     if (response == "") {
+      response = "ERROR: WiFi timeout exceded";
+    }
+    if (response.indexOf("ERR") != -1) {
       wifi_errors++;
-      response = "WiFi timeout exceded";
     }
     Serial.println(response);
   }
