@@ -1,21 +1,19 @@
 #include <SoftwareSerial.h>
 #include <DHT.h>
 
-const String _SSID = "la_cueva_de_ugarte";
-const String _PWD = "fr4nqu1t0";
+const String WIFI_SSID = "la_cueva_de_ugarte";
+const String WIFI_PWD = "fr4nqu1t0";
+const bool DEBUG = true;   //show more logs
+const int TIMEOUT = 3000; //communication timeout
+const int WIFI_ERRORS_THRESHOLD = 10; //Wifi errors max before reboot
+const int STEP_TIME = 5000; //Loop delay
+const int DEVICE_ID = 12; // Identificador de dispositivo para reporte de datos
 
-// Sensor de suelo
-const int SOIL_SENSOR_A = A0;
-// Sensor de temperatura
-const int TEMP_SENSOR_D = 7;
-// Sensor de luz
-const int LIGHT_SENSOR_A = A1;
-
-const int RX_PIN = 2;
-const int TX_PIN = 3;
-
-// DEVICE_ID
-const int DEVICE_ID = 12;
+const int SOIL_SENSOR_A = A0; // Sensor de suelo
+const int TEMP_SENSOR_D = 7; // Sensor de temperatura
+const int LIGHT_SENSOR_A = A1; // Sensor de luz
+const int RX_PIN = 2; // Rx de modulo WiFi
+const int TX_PIN = 3; // Tx de modulo WiFi
 
 // Definimos el pin digital donde se conecta el sensor DHT11
 #define DHTPIN TEMP_SENSOR_D
@@ -23,14 +21,11 @@ const int DEVICE_ID = 12;
 #define DHTTYPE DHT11
 // Inicializamos el sensor DHT11
 DHT dht(DHTPIN, DHTTYPE);
-
+// Inicializamos conexion serial con el modulo WiFi
 SoftwareSerial wifiSerial(RX_PIN, TX_PIN);      // RX, TX for ESP8266
 
-bool DEBUG = true;   //show more logs
-const int TIMEOUT = 3000; //communication timeout
 
-void setup()
-{
+void setup() {
   pinMode(SOIL_SENSOR_A,INPUT);
   pinMode(LIGHT_SENSOR_A, INPUT);
   
@@ -43,6 +38,11 @@ void setup()
   while (!wifiSerial) {
     ; // wait for serial port to connect. Needed for Leonardo only
   }
+  initWifi();
+}
+
+
+void initWifi() {
   sendToWifi("AT",TIMEOUT,DEBUG);
   delay(100);
   sendToWifi("AT+RST",TIMEOUT,DEBUG);
@@ -53,19 +53,19 @@ void setup()
   delay(100);
   sendToWifi("AT+CIPMODE=0",TIMEOUT,DEBUG);
   delay(100);
-  sendToWifi("AT+CWJAP=\""+_SSID+"\",\""+_PWD+"\"",5000,DEBUG);
+  sendToWifi("AT+CWJAP=\""+WIFI_SSID+"\",\""+WIFI_PWD+"\"",5000,DEBUG);
   delay(100);
-  Serial.println("Wifi connection is running!");  
+  Serial.println("Wifi connection is running!");
 }
+
 
 float h_amb = 0;
 float t_amb = 0;
 int ac_time = 0;
-const int step_time = 1000;
 int connection = 0;
+int wifi_errors = 0;
 
-void loop()
-{
+void loop() {
   // Leemos la humedad relativa
   float temp_h_amb = dht.readHumidity();
   // Leemos la temperatura en grados centígrados (por defecto)
@@ -82,7 +82,13 @@ void loop()
   // Leemos la itensidad de luz
   int l_amb = analogRead(LIGHT_SENSOR_A);
 
-  if (ac_time % 30000 == 0) {
+  if (ac_time % 30000 == 0) { //Envio datos cada 
+    // Si se supera la cantidad de errores en conexion Wifi ejecuto rutina de re-boot
+    if (wifi_errors > WIFI_ERRORS_THRESHOLD) {
+      initWifi();
+      wifi_errors = 0;
+    }
+    
     ac_time  = 0;
     Serial.print("HA:");
     Serial.println(h_amb);
@@ -113,8 +119,8 @@ void loop()
     connection = (connection + 1) % 4;
   }
    
-  delay(step_time);
-  ac_time += step_time;
+  delay(STEP_TIME);
+  ac_time += STEP_TIME;
 }
 
 
@@ -124,7 +130,7 @@ void loop()
 * Params: 
 * Returns: void
 */
-void sendData(String str){
+void sendData(String str) {
   String len="";
   len+=str.length()+2;
   sendToWifi("AT+CIPSEND="+String(connection)+","+len,TIMEOUT,DEBUG);
@@ -136,26 +142,15 @@ void sendData(String str){
 
 
 /*
-* Name: find
-* Description: Function used to match two string
-* Params: 
-* Returns: true if match else false
-*/
-boolean find(String string, String value){
-  return string.indexOf(value)>=0;
-}
-
-
-/*
 * Name: readWifiSerialMessage
 * Description: Function used to read data from ESP8266 Serial.
 * Params: 
 * Returns: The response from the esp8266 (if there is a reponse)
 */
-String  readWifiSerialMessage(){
+String  readWifiSerialMessage() {
   char value[100]; 
   int index_count =0;
-  while(wifiSerial.available()>0){
+  while(wifiSerial.available()>0) {
     value[index_count]=wifiSerial.read();
     index_count++;
     value[index_count] = '\0'; // Null terminate the string
@@ -165,28 +160,27 @@ String  readWifiSerialMessage(){
   return str;
 }
 
+
 /*
 * Name: sendToWifi
 * Description: Function used to send data to ESP8266.
 * Params: command - the data/command to send; timeout - the time to wait for a response; debug - print to Serial window?(true = yes, false = no)
 * Returns: The response from the esp8266 (if there is a reponse)
 */
-String sendToWifi(String command, const int timeout, boolean debug){
+String sendToWifi(String command, const int timeout, const bool debug) {
   String response = "";
   wifiSerial.println(command); // send the read character to the esp8266
   long int time = millis();
-  while( (time+timeout) > millis())
-  {
-    while(wifiSerial.available())
-    {
+  while( (time+timeout) > millis()) {
+    while(wifiSerial.available()) {
     // The esp has data so display its output to the serial window 
     char c = wifiSerial.read(); // read the next character.
     response+=c;
     }  
   }
-  if(debug)
-  {
+  if(debug) {
     if (response == "") {
+      wifi_errors++;
       response = "WiFi timeout exceded";
     }
     Serial.println(response);
