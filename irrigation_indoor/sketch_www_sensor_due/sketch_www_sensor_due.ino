@@ -1,4 +1,3 @@
-#include <SoftwareSerial.h>
 #include <DHT.h>
 
 const String WIFI_SSID = "HITRON-01F0";
@@ -6,7 +5,7 @@ const String WIFI_PWD = "NAQ2EACQBURD";
 const bool DEBUG = true;   //show more logs
 const int TIMEOUT = 3000; //communication timeout
 const int WIFI_ERRORS_THRESHOLD = 10; //Wifi errors max before reboot
-const int DATA_SENDING_INTERVAL = 230000; // Intervalo para enviar datos al servidor
+const int DATA_SENDING_INTERVAL = 2000; // Intervalo para enviar datos al servidor
 const int STEP_TIME = 5000; //Loop delay
 const int DEVICE_ID = 69; // Identificador de dispositivo para reporte de datos
 
@@ -22,9 +21,6 @@ const int TX_PIN = 3; // Tx de modulo WiFi
 #define DHTTYPE DHT11
 // Inicializamos el sensor DHT11
 DHT dht(DHTPIN, DHTTYPE);
-// Inicializamos conexion serial con el modulo WiFi
-SoftwareSerial wifiSerial(RX_PIN, TX_PIN);      // RX, TX for ESP8266
-
 
 void setup() {
   pinMode(SOIL_SENSOR_A,INPUT);
@@ -32,13 +28,7 @@ void setup() {
   
   // Open serial communications and wait for port to open esp8266:
   Serial.begin(9600);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for Leonardo only
-  }
-  wifiSerial.begin(115200);
-  while (!wifiSerial) {
-    ; // wait for serial port to connect. Needed for Leonardo only
-  }
+  Serial3.begin(115200);
   initWifi();
   dht.begin();
 }
@@ -144,16 +134,16 @@ void sendData(String str) {
 
 
 /*
-* Name: readWifiSerialMessage
+* Name: readSerial3Message
 * Description: Function used to read data from ESP8266 Serial.
 * Params: 
 * Returns: The response from the esp8266 (if there is a reponse)
 */
-String  readWifiSerialMessage() {
+String  readSerial3Message() {
   char value[100]; 
   int index_count =0;
-  while(wifiSerial.available()>0) {
-    value[index_count]=wifiSerial.read();
+  while(Serial3.available()>0) {
+    value[index_count]=Serial3.read();
     index_count++;
     value[index_count] = '\0'; // Null terminate the string
   }
@@ -171,12 +161,12 @@ String  readWifiSerialMessage() {
 */
 String sendToWifi(String command, const int timeout, const bool debug) {
   String response = "";
-  wifiSerial.println(command); // send the read character to the esp8266
+  Serial3.println(command); // send the read character to the esp8266
   long int time = millis();
   while( (time+timeout) > millis()) {
-    while(wifiSerial.available()) {
+    while(Serial3.available()) {
     // The esp has data so display its output to the serial window 
-    char c = wifiSerial.read(); // read the next character.
+    char c = Serial3.read(); // read the next character.
     response+=c;
     }  
   }
