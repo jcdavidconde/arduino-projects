@@ -1,14 +1,18 @@
 #include <SoftwareSerial.h>
 #include <DHT.h>
+#include <Wire.h>
+#include "RTClib.h"
 
-const String WIFI_SSID = "HITRON-01F0";
-const String WIFI_PWD = "NAQ2EACQBURD";
+//const String WIFI_SSID = "HITRON-01F0";
+//const String WIFI_PWD = "NAQ2EACQBURD";
+const String WIFI_SSID = "la_cueva_de_ugarte";
+const String WIFI_PWD = "fr4nqu1t0";
 const bool DEBUG = true;   //show more logs
 const int TIMEOUT = 3000; //communication timeout
 const int WIFI_ERRORS_THRESHOLD = 10; //Wifi errors max before reboot
 const int DATA_SENDING_INTERVAL = 230000; // Intervalo para enviar datos al servidor
 const int STEP_TIME = 5000; //Loop delay
-const int DEVICE_ID = 69; // Identificador de dispositivo para reporte de datos
+const int DEVICE_ID = 77; // Identificador de dispositivo para reporte de datos
 
 const int SOIL_SENSOR_A = A0; // Sensor de suelo
 const int TEMP_SENSOR_D = 7; // Sensor de temperatura
@@ -24,11 +28,14 @@ const int TX_PIN = 3; // Tx de modulo WiFi
 DHT dht(DHTPIN, DHTTYPE);
 // Inicializamos conexion serial con el modulo WiFi
 SoftwareSerial wifiSerial(RX_PIN, TX_PIN);      // RX, TX for ESP8266
-
+//Modulo Reloj
+RTC_DS1307 rtc;
 
 void setup() {
   pinMode(SOIL_SENSOR_A,INPUT);
   pinMode(LIGHT_SENSOR_A, INPUT);
+  initRTC();
+  dht.begin();
   
   // Open serial communications and wait for port to open esp8266:
   Serial.begin(9600);
@@ -40,7 +47,6 @@ void setup() {
     ; // wait for serial port to connect. Needed for Leonardo only
   }
   initWifi();
-  dht.begin();
 }
 
 
@@ -58,6 +64,13 @@ void initWifi() {
   sendToWifi("AT+CWJAP=\""+WIFI_SSID+"\",\""+WIFI_PWD+"\"",5000,DEBUG);
   delay(100);
   Serial.println("Wifi connection is running!");
+}
+
+void initRTC() {
+  if (!rtc.begin()) {
+      Serial.println("Couldn't find RTC");
+  }
+  //rtc.adjust(DateTime(2019, 5, 5, 18, 25, 0));
 }
 
 
@@ -92,6 +105,8 @@ void loop() {
     }
     
     ac_time  = 0;
+    DateTime now = rtc.now();
+    printDate(now);
     Serial.print("HA:");
     Serial.println(h_amb);
     Serial.print("TA:");
@@ -101,15 +116,19 @@ void loop() {
     Serial.print("LA:");
     Serial.println(l_amb);
 
-    String data = "?device_id="+String(DEVICE_ID);
-    data += "&humidity="+String(h_amb);
-    data += "&temperature="+String(t_amb);
-    data += "&soil_humidity="+String(h_soil);
-    data += "&light_intensity="+String(l_amb);
+    String data = "?id="+String(DEVICE_ID);
+    String temp_val = String(h_amb);
+    temp_val.replace(".", "%2E");
+    data += "&h="+temp_val;
+    temp_val = String(t_amb);
+    temp_val.replace(".", "%2E");
+    data += "&t="+temp_val;
+    data += "&sh="+String(h_soil);
+    data += "&l="+String(l_amb);
     
     sendToWifi("AT+CIPSTART="+String(connection)+",\"TCP\",\"www.jcdavidconde.com\",80",TIMEOUT,DEBUG);
     delay(100);
-    String request = "GET /jcdavidconde.com/sensor.php";
+    String request = "GET /jcdavidconde.com/sensor_v2.php";
     request += data;
     request += " HTTP/1.1\r\n";
     request += "Accept: */*\r\n";
@@ -162,6 +181,21 @@ String  readWifiSerialMessage() {
   return str;
 }
 
+void printDate(DateTime date)
+{
+   Serial.print(date.year(), DEC);
+   Serial.print('/');
+   Serial.print(date.month(), DEC);
+   Serial.print('/');
+   Serial.print(date.day(), DEC);
+   Serial.print(" ");
+   Serial.print(date.hour(), DEC);
+   Serial.print(':');
+   Serial.print(date.minute(), DEC);
+   Serial.print(':');
+   Serial.print(date.second(), DEC);
+   Serial.println();
+}
 
 /*
 * Name: sendToWifi
